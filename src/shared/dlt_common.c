@@ -31,7 +31,6 @@
 #include <time.h>     /* for localtime_r(), strftime() */
 #include <limits.h>   /* for NAME_MAX */
 #include <inttypes.h> /* for PRI formatting macro */
-#include <stdarg.h>
 #include <err.h>
 
 #include <errno.h>
@@ -41,6 +40,7 @@
 #include "dlt_user_shared.h"
 #include "dlt_common.h"
 #include "dlt_common_cfg.h"
+#include "dlt_log.h"
 
 #include "dlt_version.h"
 
@@ -77,12 +77,7 @@ char dltFifoBaseDir[DLT_PATH_MAX] = "/tmp";
 char dltShmName[NAME_MAX + 1] = "/dlt-shm";
 #endif
 
-/* internal logging parameters */
-static int logging_level = LOG_INFO;
-static char logging_filename[NAME_MAX + 1] = "";
 static bool print_with_attributes = false;
-int logging_mode = DLT_LOG_TO_CONSOLE;
-FILE *logging_handle = NULL;
 
 char *message_type[] = { "log", "app_trace", "nw_trace", "control", "", "", "", "" };
 char *log_info[] = { "", "fatal", "error", "warn", "info", "debug", "verbose", "", "", "", "", "", "", "", "", "" };
@@ -1757,30 +1752,9 @@ DltReturnValue dlt_file_free(DltFile *file, int verbose)
     return dlt_message_free(&(file->msg), verbose);
 }
 
-void dlt_log_set_level(int level)
-{
-    if ((level < 0) || (level > LOG_DEBUG)) {
-        if (logging_level < LOG_WARNING)
-            logging_level = LOG_WARNING;
 
-        dlt_vlog(LOG_WARNING, "Wrong parameter for level: %d\n", level);
-    }
-    else {
-        logging_level = level;
-    }
-}
 
-void dlt_log_set_filename(const char *filename)
-{
-    /* check nullpointer */
-    if (filename == NULL) {
-        dlt_log(LOG_WARNING, "Wrong parameter: filename is NULL\n");
-        return;
-    }
 
-    strncpy(logging_filename, filename, NAME_MAX);
-    logging_filename[NAME_MAX] = 0;
-}
 
 #if defined DLT_DAEMON_USE_FIFO_IPC || defined DLT_LIB_USE_FIFO_IPC
 void dlt_log_set_fifo_basedir(const char *pipe_dir)
@@ -1801,177 +1775,6 @@ void dlt_log_set_shm_name(const char *env_shm_name)
 void dlt_print_with_attributes(bool state)
 {
     print_with_attributes = state;
-}
-
-void dlt_log_init(int mode)
-{
-    if ((mode < DLT_LOG_TO_CONSOLE) || (mode > DLT_LOG_DROPPED)) {
-        dlt_vlog(LOG_WARNING, "Wrong parameter for mode: %d\n", mode);
-        return;
-    }
-
-    logging_mode = mode;
-
-    if (logging_mode == DLT_LOG_TO_FILE) {
-        /* internal logging to file */
-        logging_handle = fopen(logging_filename, "a");
-
-        if (logging_handle == NULL) {
-            dlt_user_printf("Internal log file %s cannot be opened!\n", logging_filename);
-            return;
-        }
-    }
-}
-
-void dlt_log_free(void)
-{
-    if (logging_mode == DLT_LOG_TO_FILE)
-        fclose(logging_handle);
-}
-
-int dlt_user_printf(const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-
-    int ret = 0;
-
-    switch (logging_mode) {
-    case DLT_LOG_TO_CONSOLE:
-    case DLT_LOG_TO_SYSLOG:
-    case DLT_LOG_TO_FILE:
-    case DLT_LOG_DROPPED:
-    default:
-        ret = vfprintf(stdout, format, args);
-        break;
-    case DLT_LOG_TO_STDERR:
-        ret = vfprintf(stderr, format, args);
-        break;
-    }
-
-    va_end(args);
-
-    return ret;
-}
-
-DltReturnValue dlt_log(int prio, char *s)
-{
-    static const char asSeverity[LOG_DEBUG +
-                                 2][11] =
-    { "EMERGENCY", "ALERT    ", "CRITICAL ", "ERROR    ", "WARNING  ", "NOTICE   ", "INFO     ", "DEBUG    ",
-      "         " };
-    static const char sFormatString[] = "[%5u.%06u]~DLT~%5d~%s~%s";
-    struct timespec sTimeSpec;
-
-    if (s == NULL)
-        return DLT_RETURN_WRONG_PARAMETER;
-
-    if (logging_level < prio)
-        return DLT_RETURN_OK;
-
-    if ((prio < 0) || (prio > LOG_DEBUG))
-        prio = LOG_DEBUG + 1;
-
-    clock_gettime(CLOCK_MONOTONIC, &sTimeSpec);
-
-    switch (logging_mode) {
-    case DLT_LOG_TO_CONSOLE:
-        /* log to stdout */
-        fprintf(stdout, sFormatString,
-                (unsigned int)sTimeSpec.tv_sec,
-                (unsigned int)(sTimeSpec.tv_nsec / 1000),
-                getpid(),
-                asSeverity[prio],
-                s);
-        fflush(stdout);
-        break;
-    case DLT_LOG_TO_STDERR:
-        /* log to stderr */
-        fprintf(stderr, sFormatString,
-                (unsigned int)sTimeSpec.tv_sec,
-                (unsigned int)(sTimeSpec.tv_nsec / 1000),
-                getpid(),
-                asSeverity[prio],
-                s);
-        break;
-    case DLT_LOG_TO_SYSLOG:
-        /* log to syslog */
-#if !defined (__WIN32__) && !defined(_MSC_VER)
-        openlog("DLT", LOG_PID, LOG_DAEMON);
-        syslog(prio,
-               sFormatString,
-               (unsigned int)sTimeSpec.tv_sec,
-               (unsigned int)(sTimeSpec.tv_nsec / 1000),
-               getpid(),
-               asSeverity[prio],
-               s);
-        closelog();
-#endif
-        break;
-    case DLT_LOG_TO_FILE:
-
-        /* log to file */
-        if (logging_handle) {
-            fprintf(logging_handle, sFormatString, (unsigned int)sTimeSpec.tv_sec,
-                    (unsigned int)(sTimeSpec.tv_nsec / 1000), getpid(), asSeverity[prio], s);
-            fflush(logging_handle);
-        }
-
-        break;
-    case DLT_LOG_DROPPED:
-    default:
-        break;
-    }
-
-    return DLT_RETURN_OK;
-}
-
-DltReturnValue dlt_vlog(int prio, const char *format, ...)
-{
-    char outputString[2048] = { 0 }; /* TODO: what is a reasonable string length here? */
-
-    va_list args;
-
-    if (format == NULL)
-        return DLT_RETURN_WRONG_PARAMETER;
-
-    if (logging_level < prio)
-        return DLT_RETURN_OK;
-
-    va_start(args, format);
-    vsnprintf(outputString, 2047, format, args);
-    va_end(args);
-
-    dlt_log(prio, outputString);
-
-    return DLT_RETURN_OK;
-}
-
-DltReturnValue dlt_vnlog(int prio, size_t size, const char *format, ...)
-{
-    char *outputString = NULL;
-
-    va_list args;
-
-    if (format == NULL)
-        return DLT_RETURN_WRONG_PARAMETER;
-
-    if ((logging_level < prio) || (size == 0))
-        return DLT_RETURN_OK;
-
-    if ((outputString = (char *)calloc(size + 1, sizeof(char))) == NULL)
-        return DLT_RETURN_ERROR;
-
-    va_start(args, format);
-    vsnprintf(outputString, size, format, args);
-    va_end(args);
-
-    dlt_log(prio, outputString);
-
-    free(outputString);
-    outputString = NULL;
-
-    return DLT_RETURN_OK;
 }
 
 DltReturnValue dlt_receiver_init(DltReceiver *receiver, int fd, DltReceiverType type, int buffersize)
@@ -4266,4 +4069,28 @@ int dlt_execute_command(char *filename, char *command, ...)
 
     free(args);
     return ret;
+}
+
+char *get_filename_ext(const char *filename)
+{
+    if (filename == NULL) {
+        fprintf(stderr, "ERROR: %s: invalid arguments\n", __FUNCTION__);
+        return NULL;
+    }
+
+    char *dot = strrchr(filename, '.');
+    return (!dot || dot == filename) ? NULL : dot;
+}
+
+bool dlt_extract_base_name_without_ext(const char* const abs_file_name, char* base_name, long base_name_len) {
+    if (abs_file_name == NULL || base_name == NULL) return false;
+
+    const char* last_separator = strrchr(abs_file_name, '.');
+    if (!last_separator) return false;
+    long length = last_separator - abs_file_name;
+    length = length > base_name_len ? base_name_len : length;
+
+    strncpy(base_name, abs_file_name, length);
+    base_name[length] = '\0';
+    return true;
 }

@@ -74,6 +74,7 @@
 
 #include "dlt_user.h"
 #include "dlt_common.h"
+#include "dlt_log.h"
 #include "dlt_user_shared.h"
 #include "dlt_user_shared_cfg.h"
 #include "dlt_user_cfg.h"

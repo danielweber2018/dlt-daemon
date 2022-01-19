@@ -20,8 +20,8 @@ endif()
 configure_file(dlt_user.h.in dlt_user.h)
 
 set(HEADER_LIST dlt.h dlt_user_macros.h dlt_client.h dlt_protocol.h
-                dlt_common.h dlt_types.h dlt_shm.h dlt_offline_trace.h
-                dlt_filetransfer.h dlt_common_api.h
+                dlt_common.h dlt_log.h dlt_types.h dlt_shm.h
+                dlt_offline_trace.h dlt_filetransfer.h dlt_common_api.h
                 ${CMAKE_CURRENT_BINARY_DIR}/dlt_version.h
                 ${CMAKE_CURRENT_BINARY_DIR}/dlt_user.h)
 

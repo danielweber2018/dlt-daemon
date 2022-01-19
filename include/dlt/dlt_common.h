@@ -76,6 +76,7 @@
 #   include <netinet/in.h>
 #   include <stdio.h>
 #   include <stdbool.h>
+#   include <stdarg.h>
 #   ifdef __linux__
 #      include <linux/limits.h>
 #      include <sys/socket.h>
@@ -88,20 +89,13 @@
 #      include <time.h>
 #   endif
 
-#   if defined(__GNUC__)
-#      define PURE_FUNCTION __attribute__((pure))
-#      define PRINTF_FORMAT(a,b) __attribute__ ((format (printf, a, b)))
-#   else
-#      define PURE_FUNCTION /* nothing */
-#      define PRINTF_FORMAT(a,b) /* nothing */
-#   endif
-
 #   if !defined (__WIN32__) && !defined(_MSC_VER)
 #      include <termios.h>
 #   endif
 
 #   include "dlt_types.h"
 #   include "dlt_protocol.h"
+#   include "dlt_log.h"
 
 #   define DLT_PACKED __attribute__((aligned(1), packed))
 
@@ -190,14 +184,6 @@
 #      define LOG_PID     0x01
 #      define LOG_DAEMON  (3 << 3)
 #   endif
-
-enum {
-    DLT_LOG_TO_CONSOLE = 0,
-    DLT_LOG_TO_SYSLOG = 1,
-    DLT_LOG_TO_FILE = 2,
-    DLT_LOG_TO_STDERR = 3,
-    DLT_LOG_DROPPED = 4
-};
 
 /**
  * The standard TCP Port used for DLT daemon, can be overwritten via -p \<port\> when starting dlt-daemon
@@ -401,6 +387,7 @@ enum {
 #   else
 #      define DLT_STATIC
 #   endif
+
 
 /**
  * Type to specify whether received data is from socket or file/fifo
@@ -1167,11 +1154,6 @@ DltReturnValue dlt_file_message(DltFile *file, int index, int verbose);
  */
 DltReturnValue dlt_file_free(DltFile *file, int verbose);
 
-/**
- * Set internal logging filename if mode 2
- * @param filename the filename
- */
-void dlt_log_set_filename(const char *filename);
 #if defined DLT_DAEMON_USE_FIFO_IPC || defined DLT_LIB_USE_FIFO_IPC
 /**
  * Set FIFO base direction
@@ -1179,55 +1161,12 @@ void dlt_log_set_filename(const char *filename);
  */
 void dlt_log_set_fifo_basedir(const char *pipe_dir);
 #endif
-/**
- * Set internal logging level
- * @param level the level
- */
-void dlt_log_set_level(int level);
 
 /**
  * Set whether to print "name" and "unit" attributes in console output
  * @param state  true = with attributes, false = without attributes
  */
 void dlt_print_with_attributes(bool state);
-
-/**
- * Initialize (external) logging facility
- * @param mode positive, 0 = log to stdout, 1 = log to syslog, 2 = log to file, 3 = log to stderr
- */
-void dlt_log_init(int mode);
-/**
- * Print with variable arguments to specified file descriptor by DLT_LOG_MODE environment variable (like fprintf)
- * @param format format string for message
- * @return negative value if there was an error or the total number of characters written is returned on success
- */
-int dlt_user_printf(const char *format, ...) PRINTF_FORMAT(1, 2);
-/**
- * Log ASCII string with null-termination to (external) logging facility
- * @param prio priority (see syslog() call)
- * @param s Pointer to ASCII string with null-termination
- * @return negative value if there was an error
- */
-DltReturnValue dlt_log(int prio, char *s);
-/**
- * Log with variable arguments to (external) logging facility (like printf)
- * @param prio priority (see syslog() call)
- * @param format format string for log message
- * @return negative value if there was an error
- */
-DltReturnValue dlt_vlog(int prio, const char *format, ...) PRINTF_FORMAT(2, 3);
-/**
- * Log size bytes with variable arguments to (external) logging facility (similar to snprintf)
- * @param prio priority (see syslog() call)
- * @param size number of bytes to log
- * @param format format string for log message
- * @return negative value if there was an error
- */
-DltReturnValue dlt_vnlog(int prio, size_t size, const char *format, ...) PRINTF_FORMAT(3, 4);
-/**
- * De-Initialize (external) logging facility
- */
-void dlt_log_free(void);
 
 /**
  * Initialising a dlt receiver structure
@@ -1656,6 +1595,22 @@ void dlt_hex_ascii_to_binary(const char *ptr, uint8_t *binary, int *size);
  * @return negative value if there was an error
  */
 int dlt_execute_command(char *filename, char *command, ...);
+
+/**
+ * Return the extension of given file name.
+ * @param filename Only file names without prepended path allowed.
+ * @return pointer to extension
+ */
+char *get_filename_ext(const char *filename);
+
+/**
+ * Extract the base name of given file name (without the extension).
+ * @param abs_file_name Absolute path to file name.
+ * @param base_name Base name it is extracted to.
+ * @param base_name_length Base name length.
+ * @return indicating success
+ */
+bool dlt_extract_base_name_without_ext(const char* const abs_file_name, char* base_name, long base_name_len);
 
 #   ifdef __cplusplus
 }
